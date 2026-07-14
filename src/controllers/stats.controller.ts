@@ -83,3 +83,156 @@ export async function getStatsActividad(req: Request, res: Response) {
   `, params);
   res.json(rows);
 }
+
+// Nivel 1 (Gerencia): de dónde vienen los leads y qué tan bien convierte cada fuente
+export async function getStatsFuentes(req: Request, res: Response) {
+  const { conds, params } = filtros(req);
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+
+  const rows = await query(`
+    SELECT
+      COALESCE(first_source_type, 'sin_atribuir') as fuente,
+      COUNT(*) as total,
+      COUNT(*) FILTER (WHERE estado='derivado') as derivados,
+      COUNT(*) FILTER (WHERE estado='en_conversacion') as en_conversacion,
+      COUNT(*) FILTER (WHERE estado IN ('frio','frio_silencioso')) as frios,
+      ROUND(100.0 * COUNT(*) FILTER (WHERE estado='derivado') / NULLIF(COUNT(*),0), 1) as tasa_derivacion_pct
+    FROM contactos
+    ${where}
+    GROUP BY COALESCE(first_source_type, 'sin_atribuir')
+    ORDER BY total DESC
+  `, params);
+  res.json(rows);
+}
+
+// Nivel 2 (Marketing): funnel de leads agrupado por campaña de Meta Ads
+export async function getStatsCampanas(req: Request, res: Response) {
+  const { conds, params } = filtros(req);
+  conds.push(`first_source_type = 'meta_ad'`);
+  const where = `WHERE ${conds.join(' AND ')}`;
+
+  const rows = await query(`
+    SELECT
+      COALESCE(NULLIF(TRIM(first_campaign_name), ''), 'Sin campaña') as campana,
+      COUNT(*) as total_leads,
+      COUNT(*) FILTER (WHERE estado='derivado') as derivados,
+      COUNT(*) FILTER (WHERE estado='en_conversacion') as en_conversacion,
+      COUNT(*) FILTER (WHERE estado IN ('frio','frio_silencioso')) as frios,
+      ROUND(100.0 * COUNT(*) FILTER (WHERE estado='derivado') / NULLIF(COUNT(*),0), 1) as tasa_derivacion_pct
+    FROM contactos
+    ${where}
+    GROUP BY COALESCE(NULLIF(TRIM(first_campaign_name), ''), 'Sin campaña')
+    ORDER BY total_leads DESC
+  `, params);
+  res.json(rows);
+}
+
+// Nivel 2/3 (Marketing/Comercial): performance detallado campaña → adset → anuncio
+export async function getStatsAnuncios(req: Request, res: Response) {
+  const { conds, params } = filtros(req);
+  conds.push(`first_source_type = 'meta_ad'`);
+  const where = `WHERE ${conds.join(' AND ')}`;
+
+  const rows = await query(`
+    SELECT
+      COALESCE(NULLIF(TRIM(first_campaign_name), ''), 'Sin campaña') as campana,
+      COALESCE(NULLIF(TRIM(first_adset_name), ''), 'Sin adset') as adset,
+      COALESCE(NULLIF(TRIM(first_ad_name), ''), 'Sin anuncio') as anuncio,
+      COUNT(*) as total_leads,
+      COUNT(*) FILTER (WHERE estado='derivado') as derivados,
+      COUNT(*) FILTER (WHERE estado='en_conversacion') as en_conversacion,
+      COUNT(*) FILTER (WHERE estado IN ('frio','frio_silencioso')) as frios,
+      ROUND(100.0 * COUNT(*) FILTER (WHERE estado='derivado') / NULLIF(COUNT(*),0), 1) as tasa_derivacion_pct
+    FROM contactos
+    ${where}
+    GROUP BY 1, 2, 3
+    ORDER BY total_leads DESC
+  `, params);
+  res.json(rows);
+}
+
+// Nivel 3 (Comercial): de un anuncio puntual, qué proyectos generan más intención/derivación
+export async function getStatsAnuncioProyectos(req: Request, res: Response) {
+  const { conds, params } = filtros(req);
+  conds.push(`first_source_type = 'meta_ad'`);
+  params.push(req.params.anuncio);
+  conds.push(`first_ad_name = $${params.length}`);
+  const where = `WHERE ${conds.join(' AND ')}`;
+
+  const rows = await query(`
+    SELECT
+      COALESCE(NULLIF(TRIM(proyecto_interes), ''), 'Sin proyecto') as proyecto,
+      COUNT(*) as total_leads,
+      COUNT(*) FILTER (WHERE estado='derivado') as derivados,
+      ROUND(100.0 * COUNT(*) FILTER (WHERE estado='derivado') / NULLIF(COUNT(*),0), 1) as tasa_derivacion_pct
+    FROM contactos
+    ${where}
+    GROUP BY COALESCE(NULLIF(TRIM(proyecto_interes), ''), 'Sin proyecto')
+    ORDER BY total_leads DESC
+  `, params);
+  res.json(rows);
+}
+
+// Nivel 3 (Comercial): catálogo de creativos — para mostrar el anuncio real (texto/imagen/video)
+// junto a sus métricas, cruzando lead_attribution (detalle del creativo) con contactos (estado/embudo)
+export async function getStatsCreativos(req: Request, res: Response) {
+  const { conds, params } = filtros(req);
+  conds.push(`c.first_source_type = 'meta_ad'`);
+  const where = `WHERE ${conds.join(' AND ')}`;
+
+  const rows = await query(`
+    SELECT
+      c.first_ad_id as ad_id,
+      COALESCE(NULLIF(TRIM(c.first_ad_name), ''), 'Sin anuncio') as anuncio,
+      COALESCE(NULLIF(TRIM(c.first_campaign_name), ''), 'Sin campaña') as campana,
+      COALESCE(NULLIF(TRIM(c.first_adset_name), ''), 'Sin adset') as adset,
+      la.meta_headline as titulo,
+      la.meta_body as texto,
+      (la.meta_headline LIKE '%{{%' OR la.meta_body LIKE '%{{%') as es_catalogo_dinamico,
+      la.meta_media_type as tipo_media,
+      la.image_url as imagen_url,
+      la.video_url as video_url,
+      la.thumbnail_url as thumbnail_url,
+      COUNT(*) as total_leads,
+      COUNT(*) FILTER (WHERE c.estado='derivado') as derivados,
+      COUNT(*) FILTER (WHERE c.estado='en_conversacion') as en_conversacion,
+      COUNT(*) FILTER (WHERE c.estado IN ('frio','frio_silencioso')) as frios,
+      ROUND(100.0 * COUNT(*) FILTER (WHERE c.estado='derivado') / NULLIF(COUNT(*),0), 1) as tasa_derivacion_pct
+    FROM contactos c
+    LEFT JOIN LATERAL (
+      SELECT * FROM lead_attribution la
+      WHERE la.celular = c.numero AND la.is_first_touch = true
+      ORDER BY la.created_at DESC LIMIT 1
+    ) la ON true
+    ${where}
+    GROUP BY 1, 2, 3, 4, la.meta_headline, la.meta_body, la.meta_media_type, la.image_url, la.video_url, la.thumbnail_url, es_catalogo_dinamico
+    ORDER BY total_leads DESC
+  `, params);
+  res.json(rows);
+}
+
+// Nivel 2 (Marketing): cuántos leads tuvieron más de un touch (vieron/clickearon varios
+// anuncios) antes de escribir — mide si la campaña necesita varios impactos para convertir
+export async function getStatsMultiTouch(req: Request, res: Response) {
+  const { conds, params } = filtros(req, 'c.creado_en');
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+
+  const rows = await query(`
+    WITH touches AS (
+      SELECT c.numero, c.estado, COUNT(la.id) as total_touches
+      FROM contactos c
+      JOIN lead_attribution la ON la.celular = c.numero
+      ${where}
+      GROUP BY c.numero, c.estado
+    )
+    SELECT
+      CASE WHEN total_touches <= 1 THEN '1 touch' ELSE '2+ touches' END as grupo,
+      COUNT(*) as total_leads,
+      COUNT(*) FILTER (WHERE estado='derivado') as derivados,
+      ROUND(100.0 * COUNT(*) FILTER (WHERE estado='derivado') / NULLIF(COUNT(*),0), 1) as tasa_derivacion_pct
+    FROM touches
+    GROUP BY 1
+    ORDER BY 1
+  `, params);
+  res.json(rows);
+}
