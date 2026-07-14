@@ -1,16 +1,38 @@
 import { Request, Response } from 'express';
 import { query } from '../db/pool';
 
-export async function getStats(req: Request, res: Response) {
+const esFecha = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+function filtros(req: Request, colFecha = 'creado_en') {
   const proyecto = req.query.proyecto as string || '';
-  
-  const where = proyecto
-    ? `WHERE LOWER(proyecto_interes) LIKE LOWER($1)`
-    : '';
-  const params = proyecto ? [`%${proyecto}%`] : [];
+  const desde = req.query.desde as string || '';
+  const hasta = req.query.hasta as string || '';
+
+  const conds: string[] = [];
+  const params: any[] = [];
+
+  if (proyecto) {
+    params.push(`%${proyecto}%`);
+    conds.push(`LOWER(proyecto_interes) LIKE LOWER($${params.length})`);
+  }
+  if (esFecha(desde)) {
+    params.push(desde);
+    conds.push(`${colFecha} >= $${params.length}::date`);
+  }
+  if (esFecha(hasta)) {
+    params.push(hasta);
+    conds.push(`${colFecha} < $${params.length}::date + INTERVAL '1 day'`);
+  }
+
+  return { conds, params };
+}
+
+export async function getStats(req: Request, res: Response) {
+  const { conds, params } = filtros(req);
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
   const rows = await query(`
-    SELECT 
+    SELECT
       COUNT(*) as total,
       COUNT(*) FILTER (WHERE estado='en_conversacion') as conversando,
       COUNT(*) FILTER (WHERE estado='derivado') as derivados,
@@ -22,27 +44,35 @@ export async function getStats(req: Request, res: Response) {
 }
 
 export async function getStatsProyectos(req: Request, res: Response) {
+  const { conds, params } = filtros(req);
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+
   const rows = await query(`
-    SELECT 
+    SELECT
       COALESCE(NULLIF(TRIM(proyecto_interes), ''), 'Sin proyecto') as proyecto_interes,
       COUNT(*) as total
     FROM contactos
+    ${where}
     GROUP BY COALESCE(NULLIF(TRIM(proyecto_interes), ''), 'Sin proyecto')
     ORDER BY total DESC
-  `);
+  `, params);
   res.json(rows);
 }
 
 export async function getStatsActividad(req: Request, res: Response) {
-  const proyecto = req.query.proyecto as string || '';
+  // el gráfico agrupa por día de actividad, así que el rango filtra sobre ultima_actividad
+  const { conds, params } = filtros(req, 'ultima_actividad');
 
-  const where = proyecto
-    ? `WHERE ultima_actividad >= NOW() - INTERVAL '14 days' AND LOWER(proyecto_interes) LIKE LOWER($1)`
-    : `WHERE ultima_actividad >= NOW() - INTERVAL '14 days'`;
-  const params = proyecto ? [`%${proyecto}%`] : [];
+  // sin rango de fechas, mantiene los últimos 14 días
+  const desde = req.query.desde as string || '';
+  const hasta = req.query.hasta as string || '';
+  if (!esFecha(desde) && !esFecha(hasta)) {
+    conds.push(`ultima_actividad >= NOW() - INTERVAL '14 days'`);
+  }
+  const where = `WHERE ${conds.join(' AND ')}`;
 
   const rows = await query(`
-    SELECT 
+    SELECT
       DATE(ultima_actividad) as fecha,
       COUNT(*) as total,
       COUNT(*) FILTER (WHERE estado='derivado') as derivados
