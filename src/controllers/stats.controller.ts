@@ -107,8 +107,8 @@ export async function getStatsFuentes(req: Request, res: Response) {
 
 // Nivel 2 (Marketing): funnel de leads agrupado por campaña de Meta Ads
 // El nombre real de campaña vive en lead_attribution (contactos.first_campaign_name
-// quedó con el headline del anuncio por un bug de captura en n8n), así que se cruza
-// con el primer touch de lead_attribution y se cae a first_campaign_name solo si falta.
+// quedó con el headline del anuncio por un bug de captura en n8n). Se agrupa por
+// campaign_id (identificador real de Meta) para no partir/fusionar campañas por texto.
 export async function getStatsCampanas(req: Request, res: Response) {
   const { conds, params } = filtros(req, 'c.creado_en');
   conds.push(`c.first_source_type = 'meta_ad'`);
@@ -116,6 +116,7 @@ export async function getStatsCampanas(req: Request, res: Response) {
 
   const rows = await query(`
     SELECT
+      COALESCE(la.campaign_id, 'sin_id') as campaign_id,
       COALESCE(NULLIF(TRIM(la.campaign_name), ''), NULLIF(TRIM(c.first_campaign_name), ''), 'Sin campaña') as campana,
       COUNT(*) as total_leads,
       COUNT(*) FILTER (WHERE c.estado='derivado') as derivados,
@@ -125,17 +126,24 @@ export async function getStatsCampanas(req: Request, res: Response) {
     FROM contactos c
     LEFT JOIN LATERAL (
       SELECT * FROM lead_attribution la
-      WHERE la.celular = c.numero AND la.is_first_touch = true
-      ORDER BY la.created_at DESC LIMIT 1
+      WHERE la.celular = c.numero
+      ORDER BY (la.meta_headline IS NOT NULL OR la.image_url IS NOT NULL OR la.video_url IS NOT NULL) DESC,
+               la.is_first_touch DESC,
+               la.created_at DESC
+      LIMIT 1
     ) la ON true
     ${where}
-    GROUP BY 1
+    GROUP BY 1, 2
     ORDER BY total_leads DESC
   `, params);
   res.json(rows);
 }
 
 // Nivel 2/3 (Marketing/Comercial): performance detallado campaña → adset → anuncio
+// Se agrupa por c.first_ad_id (identificador real y único de Meta, tomado del primer
+// touch) en vez de por el texto del nombre: dos anuncios distintos pueden compartir
+// nombre (ej. el mismo video subido a 2 campañas), y agrupar por texto los fusionaría
+// o los partiría de forma inconsistente con /stats/anuncios/proyectos.
 export async function getStatsAnuncios(req: Request, res: Response) {
   const { conds, params } = filtros(req, 'c.creado_en');
   conds.push(`c.first_source_type = 'meta_ad'`);
@@ -143,6 +151,7 @@ export async function getStatsAnuncios(req: Request, res: Response) {
 
   const rows = await query(`
     SELECT
+      c.first_ad_id as ad_id,
       COALESCE(NULLIF(TRIM(la.campaign_name), ''), NULLIF(TRIM(c.first_campaign_name), ''), 'Sin campaña') as campana,
       COALESCE(NULLIF(TRIM(la.adset_name), ''), NULLIF(TRIM(c.first_adset_name), ''), 'Sin adset') as adset,
       COALESCE(NULLIF(TRIM(la.ad_name), ''), NULLIF(TRIM(c.first_ad_name), ''), 'Sin anuncio') as anuncio,
@@ -154,25 +163,27 @@ export async function getStatsAnuncios(req: Request, res: Response) {
     FROM contactos c
     LEFT JOIN LATERAL (
       SELECT * FROM lead_attribution la
-      WHERE la.celular = c.numero AND la.is_first_touch = true
-      ORDER BY la.created_at DESC LIMIT 1
+      WHERE la.celular = c.numero
+      ORDER BY (la.meta_headline IS NOT NULL OR la.image_url IS NOT NULL OR la.video_url IS NOT NULL) DESC,
+               la.is_first_touch DESC,
+               la.created_at DESC
+      LIMIT 1
     ) la ON true
     ${where}
-    GROUP BY 1, 2, 3
+    GROUP BY 1, 2, 3, 4
     ORDER BY total_leads DESC
   `, params);
   res.json(rows);
 }
 
 // Nivel 3 (Comercial): de un anuncio puntual, qué proyectos generan más intención/derivación
-// El :anuncio recibido es el nombre real (la.ad_name) que ahora devuelve /stats/anuncios,
-// así que se filtra sobre el mismo primer touch de lead_attribution, con fallback a
-// contactos.first_ad_name para leads sin registro en lead_attribution.
+// ?ad_id= identifica el anuncio real de Meta (mismo valor devuelto como ad_id por
+// /stats/anuncios y /stats/creativos). Va por query string por consistencia con el resto.
 export async function getStatsAnuncioProyectos(req: Request, res: Response) {
   const { conds, params } = filtros(req, 'c.creado_en');
   conds.push(`c.first_source_type = 'meta_ad'`);
-  params.push(req.params.anuncio);
-  conds.push(`COALESCE(NULLIF(TRIM(la.ad_name), ''), NULLIF(TRIM(c.first_ad_name), '')) = $${params.length}`);
+  params.push(req.query.ad_id as string || '');
+  conds.push(`c.first_ad_id = $${params.length}`);
   const where = `WHERE ${conds.join(' AND ')}`;
 
   const rows = await query(`
@@ -182,11 +193,6 @@ export async function getStatsAnuncioProyectos(req: Request, res: Response) {
       COUNT(*) FILTER (WHERE c.estado='derivado') as derivados,
       ROUND(100.0 * COUNT(*) FILTER (WHERE c.estado='derivado') / NULLIF(COUNT(*),0), 1) as tasa_derivacion_pct
     FROM contactos c
-    LEFT JOIN LATERAL (
-      SELECT * FROM lead_attribution la
-      WHERE la.celular = c.numero AND la.is_first_touch = true
-      ORDER BY la.created_at DESC LIMIT 1
-    ) la ON true
     ${where}
     GROUP BY 1
     ORDER BY total_leads DESC
@@ -195,7 +201,8 @@ export async function getStatsAnuncioProyectos(req: Request, res: Response) {
 }
 
 // Nivel 3 (Comercial): catálogo de creativos — para mostrar el anuncio real (texto/imagen/video)
-// junto a sus métricas, cruzando lead_attribution (detalle del creativo) con contactos (estado/embudo)
+// junto a sus métricas, cruzando lead_attribution (detalle del creativo) con contactos (estado/embudo).
+// Se agrupa por c.first_ad_id, igual que /stats/anuncios y /stats/anuncios/proyectos.
 export async function getStatsCreativos(req: Request, res: Response) {
   const { conds, params } = filtros(req);
   conds.push(`c.first_source_type = 'meta_ad'`);
@@ -222,8 +229,11 @@ export async function getStatsCreativos(req: Request, res: Response) {
     FROM contactos c
     LEFT JOIN LATERAL (
       SELECT * FROM lead_attribution la
-      WHERE la.celular = c.numero AND la.is_first_touch = true
-      ORDER BY la.created_at DESC LIMIT 1
+      WHERE la.celular = c.numero
+      ORDER BY (la.meta_headline IS NOT NULL OR la.image_url IS NOT NULL OR la.video_url IS NOT NULL) DESC,
+               la.is_first_touch DESC,
+               la.created_at DESC
+      LIMIT 1
     ) la ON true
     ${where}
     GROUP BY 1, 2, 3, 4, la.meta_headline, la.meta_body, la.meta_media_type, la.image_url, la.video_url, la.thumbnail_url, es_catalogo_dinamico

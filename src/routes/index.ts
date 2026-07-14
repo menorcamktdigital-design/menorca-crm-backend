@@ -21,7 +21,7 @@ router.get('/stats/actividad', getStatsActividad);
 router.get('/stats/fuentes', getStatsFuentes);
 router.get('/stats/campanas', getStatsCampanas);
 router.get('/stats/anuncios', getStatsAnuncios);
-router.get('/stats/anuncios/:anuncio/proyectos', getStatsAnuncioProyectos);
+router.get('/stats/anuncios/proyectos', getStatsAnuncioProyectos);
 router.get('/stats/creativos', getStatsCreativos);
 router.get('/stats/multitouch', getStatsMultiTouch);
 router.get('/contactos', getContactos);
