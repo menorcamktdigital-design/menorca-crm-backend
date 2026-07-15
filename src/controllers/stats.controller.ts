@@ -51,7 +51,8 @@ export async function getStatsProyectos(req: Request, res: Response) {
   const rows = await query(`
     SELECT
       COALESCE(NULLIF(TRIM(proyecto_interes), ''), 'Sin proyecto') as proyecto_interes,
-      COUNT(*) as total
+      COUNT(*) as total,
+      COUNT(*) FILTER (WHERE estado='derivado') as derivados
     FROM contactos
     ${where}
     GROUP BY COALESCE(NULLIF(TRIM(proyecto_interes), ''), 'Sin proyecto')
