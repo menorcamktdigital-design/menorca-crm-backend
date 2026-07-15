@@ -4,16 +4,26 @@ import { query } from '../db/pool';
 const esFecha = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
 function filtros(req: Request, colFecha = 'creado_en') {
-  const proyecto = req.query.proyecto as string || '';
+  // ?proyecto= acepta un valor único o varios separados por coma (selección
+  // múltiple en el filtro de plaza): cada uno se matchea con LIKE y se
+  // combinan con OR, ya que proyecto_interes es texto libre y puede
+  // contener más de un nombre de proyecto en el mismo campo.
+  const proyectos = (req.query.proyecto as string || '')
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
   const desde = req.query.desde as string || '';
   const hasta = req.query.hasta as string || '';
 
   const conds: string[] = [];
   const params: any[] = [];
 
-  if (proyecto) {
-    params.push(`%${proyecto}%`);
-    conds.push(`LOWER(proyecto_interes) LIKE LOWER($${params.length})`);
+  if (proyectos.length > 0) {
+    const clausulas = proyectos.map((p) => {
+      params.push(`%${p}%`);
+      return `LOWER(proyecto_interes) LIKE LOWER($${params.length})`;
+    });
+    conds.push(`(${clausulas.join(' OR ')})`);
   }
   if (esFecha(desde)) {
     params.push(desde);

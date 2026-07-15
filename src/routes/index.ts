@@ -10,7 +10,7 @@ import {
   getStatsCreativos,
   getStatsMultiTouch,
 } from '../controllers/stats.controller';
-import { getContactos } from '../controllers/contactos.controller';
+import { getContactos, getFichaContacto } from '../controllers/contactos.controller';
 import { getConversacion, getNuevos } from '../controllers/conversaciones.controller';
 
 const router = Router();
@@ -25,6 +25,7 @@ router.get('/stats/anuncios/proyectos', getStatsAnuncioProyectos);
 router.get('/stats/creativos', getStatsCreativos);
 router.get('/stats/multitouch', getStatsMultiTouch);
 router.get('/contactos', getContactos);
+router.get('/contactos/:numero/ficha', getFichaContacto);
 router.get('/conversacion/:numero', getConversacion);
 router.get('/nuevos/:numero/:desde', getNuevos);
 
