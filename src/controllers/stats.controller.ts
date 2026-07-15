@@ -36,7 +36,8 @@ export async function getStats(req: Request, res: Response) {
       COUNT(*) as total,
       COUNT(*) FILTER (WHERE estado='en_conversacion') as conversando,
       COUNT(*) FILTER (WHERE estado='derivado') as derivados,
-      COUNT(*) FILTER (WHERE estado='visita_agendada') as visitas
+      COUNT(*) FILTER (WHERE estado='visita_agendada') as visitas,
+      COUNT(*) FILTER (WHERE estado='recontacto') as recontactos
     FROM contactos
     ${where}
   `, params);
