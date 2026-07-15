@@ -3,6 +3,20 @@ import { query } from '../db/pool.js';
 
 const esFecha = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
+// Misma lista oficial que el frontend (lib/proyectos.ts PROYECTOS). Se
+// duplica acá porque "Otros" (texto declarado que no matchea ningún
+// proyecto oficial) solo es expresable en SQL negando esta lista completa.
+const PROYECTOS_OFICIALES = [
+  'Alto Piura', 'Brisas de Ventanilla', 'Caleta San Antonio', 'Costa Linda',
+  'El Carbón', 'El Olivar de Pisco', 'La Quebrada', 'Las Rompientes',
+  'Lirios de Carabayllo', 'Los Pecanos', 'Mala Comercio',
+  'Mirador de San Antonio', 'Posada del Sol Chiclayo', 'Praderas El Olivar 2',
+  'Praderas El Olivar 3', 'San Antonio de Chiclayo 3', 'San Antonio de Mala',
+  'San Antonio de Pachacamac', 'Villa Posada del Sol Chiclayo',
+  'Villas de San Antonio Chorrillos', 'Villas Punta Mar Casas',
+  'Villas Punta Mar Lotes',
+];
+
 // Un valor único o varios separados por coma (selección múltiple en los
 // filtros): "Alto Piura,Brisas de Ventanilla" → ['Alto Piura', ...]
 const lista = (v: unknown): string[] =>
@@ -43,16 +57,25 @@ function whereContactos(req: Request) {
     conds.push(`(${clausulas.join(' OR ')})`);
   }
 
-  // proyecto_interes es texto libre: cada proyecto se matchea con LIKE y se
-  // combinan con OR. 'Sin proyecto' = campo vacío/NULL; 'Otros' no es
-  // expresable en SQL (texto no reconocido), se ignora acá y solo aplica
-  // en el filtro cliente si se necesitara.
+  // proyecto_interes es texto libre: cada proyecto oficial se matchea con
+  // LIKE y se combinan con OR. 'Sin proyecto' = campo vacío/NULL. 'Otros' =
+  // declaró algo pero no coincide con NINGÚN proyecto oficial (se niega la
+  // lista completa) — aproximación por LIKE simple, sin los alias/typos
+  // que sí resuelve la normalización más fina del cliente (lib/proyectos.ts).
   if (proyectos.length > 0) {
     const clausulas: string[] = [];
     for (const p of proyectos) {
       if (p === 'Sin proyecto') {
         clausulas.push(`(c.proyecto_interes IS NULL OR TRIM(c.proyecto_interes) = '')`);
-      } else if (p !== 'Otros') {
+      } else if (p === 'Otros') {
+        const negaciones = PROYECTOS_OFICIALES.map((oficial) => {
+          params.push(`%${oficial}%`);
+          return `LOWER(c.proyecto_interes) NOT LIKE LOWER($${params.length})`;
+        });
+        clausulas.push(
+          `(c.proyecto_interes IS NOT NULL AND TRIM(c.proyecto_interes) != '' AND ${negaciones.join(' AND ')})`
+        );
+      } else {
         params.push(`%${p}%`);
         clausulas.push(`LOWER(c.proyecto_interes) LIKE LOWER($${params.length})`);
       }
