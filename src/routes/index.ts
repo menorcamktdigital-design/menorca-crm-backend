@@ -12,6 +12,7 @@ import {
 } from '../controllers/stats.controller';
 import { getContactos, getFichaContacto } from '../controllers/contactos.controller';
 import { getConversacion, getNuevos } from '../controllers/conversaciones.controller';
+import { getFormularios, getFormulariosStats, getFormulariosFunnel } from '../controllers/formularios.controller';
 
 const router = Router();
 
@@ -28,5 +29,8 @@ router.get('/contactos', getContactos);
 router.get('/contactos/:numero/ficha', getFichaContacto);
 router.get('/conversacion/:numero', getConversacion);
 router.get('/nuevos/:numero/:desde', getNuevos);
+router.get('/formularios/stats', getFormulariosStats);
+router.get('/formularios/funnel', getFormulariosFunnel);
+router.get('/formularios', getFormularios);
 
 export default router;

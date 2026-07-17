@@ -25,13 +25,19 @@ function filtros(req: Request, colFecha = 'creado_en') {
     });
     conds.push(`(${clausulas.join(' OR ')})`);
   }
+  // Las columnas de fecha guardan UTC (ver db/pool.ts); el corte de día se
+  // convierte de hora de Perú a UTC para que "un día" sea el día local.
   if (esFecha(desde)) {
     params.push(desde);
-    conds.push(`${colFecha} >= $${params.length}::date`);
+    conds.push(
+      `${colFecha} >= ($${params.length}::timestamp AT TIME ZONE 'America/Lima' AT TIME ZONE 'UTC')`
+    );
   }
   if (esFecha(hasta)) {
     params.push(hasta);
-    conds.push(`${colFecha} < $${params.length}::date + INTERVAL '1 day'`);
+    conds.push(
+      `${colFecha} < (($${params.length}::timestamp + INTERVAL '1 day') AT TIME ZONE 'America/Lima' AT TIME ZONE 'UTC')`
+    );
   }
 
   return { conds, params };

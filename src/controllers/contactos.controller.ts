@@ -87,13 +87,21 @@ function whereContactos(req: Request) {
     params.push(`%${q}%`);
     conds.push(`(c.numero ILIKE $${params.length} OR c.nombre ILIKE $${params.length})`);
   }
+  // creado_en guarda el instante en UTC (ver db/pool.ts). El día que elige
+  // el usuario es día de Perú, así que el corte de medianoche se convierte
+  // de America/Lima a UTC antes de comparar; sin esto "ayer" traía de las
+  // 7pm del día anterior a las 7pm del día elegido (hora de Lima).
   if (esFecha(desde)) {
     params.push(desde);
-    conds.push(`c.creado_en >= $${params.length}::date`);
+    conds.push(
+      `c.creado_en >= ($${params.length}::timestamp AT TIME ZONE 'America/Lima' AT TIME ZONE 'UTC')`
+    );
   }
   if (esFecha(hasta)) {
     params.push(hasta);
-    conds.push(`c.creado_en < $${params.length}::date + INTERVAL '1 day'`);
+    conds.push(
+      `c.creado_en < (($${params.length}::timestamp + INTERVAL '1 day') AT TIME ZONE 'America/Lima' AT TIME ZONE 'UTC')`
+    );
   }
 
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
