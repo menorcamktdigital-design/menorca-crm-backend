@@ -15,7 +15,7 @@ function filtros(req: Request, colFecha = 'creado_en') {
   const desde = req.query.desde as string || '';
   const hasta = req.query.hasta as string || '';
 
-  const conds: string[] = [];
+  const conds: string[] = ['first_source_type IS NOT NULL'];
   const params: any[] = [];
 
   if (proyectos.length > 0) {
@@ -50,10 +50,17 @@ export async function getStats(req: Request, res: Response) {
   const rows = await query(`
     SELECT
       COUNT(*) as total,
+      COUNT(*) FILTER (WHERE first_source_type = 'meta_ad') as meta_ads,
+      COUNT(*) FILTER (WHERE first_source_type = 'direct') as directo,
+      COUNT(*) FILTER (WHERE first_source_type IS NULL) as sin_atribuir,
+      COUNT(*) FILTER (WHERE recibio_acelerador = true) as acelerador,
+      COUNT(*) FILTER (WHERE recibio_referido = true) as referido,
       COUNT(*) FILTER (WHERE estado='en_conversacion') as conversando,
       COUNT(*) FILTER (WHERE estado='derivado') as derivados,
       COUNT(*) FILTER (WHERE estado='visita_agendada') as visitas,
-      COUNT(*) FILTER (WHERE estado='recontacto') as recontactos
+      COUNT(*) FILTER (WHERE estado='recontacto') as recontactos,
+      COUNT(*) FILTER (WHERE estado='no_contesta') as no_contesta,
+      COUNT(*) FILTER (WHERE estado='no_interesado') as no_interesado
     FROM contactos
     ${where}
   `, params);
@@ -144,7 +151,7 @@ export async function getStatsCampanas(req: Request, res: Response) {
     FROM contactos c
     LEFT JOIN LATERAL (
       SELECT * FROM lead_attribution la
-      WHERE la.celular = c.numero
+      WHERE la.numero = c.numero
       ORDER BY (la.meta_headline IS NOT NULL OR la.image_url IS NOT NULL OR la.video_url IS NOT NULL) DESC,
                la.is_first_touch DESC,
                la.created_at DESC
@@ -181,7 +188,7 @@ export async function getStatsAnuncios(req: Request, res: Response) {
     FROM contactos c
     LEFT JOIN LATERAL (
       SELECT * FROM lead_attribution la
-      WHERE la.celular = c.numero
+      WHERE la.numero = c.numero
       ORDER BY (la.meta_headline IS NOT NULL OR la.image_url IS NOT NULL OR la.video_url IS NOT NULL) DESC,
                la.is_first_touch DESC,
                la.created_at DESC
@@ -202,6 +209,11 @@ export async function getStatsAnuncioProyectos(req: Request, res: Response) {
   conds.push(`c.first_source_type = 'meta_ad'`);
   params.push(req.query.ad_id as string || '');
   conds.push(`c.first_ad_id = $${params.length}`);
+  const campaignId = req.query.campaign_id as string || '';
+  if (campaignId && campaignId !== 'sin_id') {
+    params.push(campaignId);
+    conds.push(`EXISTS (SELECT 1 FROM lead_attribution la2 WHERE la2.numero = c.numero AND la2.campaign_id = $${params.length})`);
+  }
   const where = `WHERE ${conds.join(' AND ')}`;
 
   const rows = await query(`
@@ -247,7 +259,7 @@ export async function getStatsCreativos(req: Request, res: Response) {
     FROM contactos c
     LEFT JOIN LATERAL (
       SELECT * FROM lead_attribution la
-      WHERE la.celular = c.numero
+      WHERE la.numero = c.numero
       ORDER BY (la.meta_headline IS NOT NULL OR la.image_url IS NOT NULL OR la.video_url IS NOT NULL) DESC,
                la.is_first_touch DESC,
                la.created_at DESC
@@ -270,7 +282,7 @@ export async function getStatsMultiTouch(req: Request, res: Response) {
     WITH touches AS (
       SELECT c.numero, c.estado, COUNT(la.id) as total_touches
       FROM contactos c
-      JOIN lead_attribution la ON la.celular = c.numero
+      JOIN lead_attribution la ON la.numero = c.numero
       ${where}
       GROUP BY c.numero, c.estado
     )

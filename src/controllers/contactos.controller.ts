@@ -164,7 +164,7 @@ export async function getFichaContacto(req: Request, res: Response) {
   }
 
   const touches = await query(`
-    SELECT * FROM lead_attribution WHERE celular = $1 ORDER BY created_at ASC
+    SELECT * FROM lead_attribution WHERE numero = $1 ORDER BY created_at ASC
   `, [numero]);
 
   res.json({ contacto: contactoRows[0], touches });
