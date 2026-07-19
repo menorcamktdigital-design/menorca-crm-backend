@@ -10,8 +10,8 @@ import {
   getStatsCreativos,
   getStatsMultiTouch,
 } from '../controllers/stats.controller';
-import { getContactos, getFichaContacto } from '../controllers/contactos.controller';
-import { getConversacion, getNuevos } from '../controllers/conversaciones.controller';
+import { getContactos, getFichaContacto, getVisitas } from '../controllers/contactos.controller';
+import { getConversacion, getNuevos, getMediaProxy, getCreativoImagen } from '../controllers/conversaciones.controller';
 import { getFormularios, getFormulariosStats, getFormulariosFunnel } from '../controllers/formularios.controller';
 
 const router = Router();
@@ -26,9 +26,12 @@ router.get('/stats/anuncios/proyectos', getStatsAnuncioProyectos);
 router.get('/stats/creativos', getStatsCreativos);
 router.get('/stats/multitouch', getStatsMultiTouch);
 router.get('/contactos', getContactos);
+router.get('/visitas', getVisitas);
 router.get('/contactos/:numero/ficha', getFichaContacto);
 router.get('/conversacion/:numero', getConversacion);
 router.get('/nuevos/:numero/:desde', getNuevos);
+router.get('/media/:imagen_id', getMediaProxy);
+router.get('/creativo/:ad_id/imagen', getCreativoImagen);
 router.get('/formularios/stats', getFormulariosStats);
 router.get('/formularios/funnel', getFormulariosFunnel);
 router.get('/formularios', getFormularios);

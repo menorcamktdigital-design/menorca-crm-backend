@@ -141,6 +141,18 @@ export async function getContactos(req: Request, res: Response) {
   res.json({ contactos: rows, total });
 }
 
+// Visitas agendadas: contactos con estado visita_agendada, para la vista
+// calendario/agenda. SELECT * para incluir fecha_visita si la columna
+// existe; si no, el frontend usa ultima_actividad como fecha de referencia.
+export async function getVisitas(_req: Request, res: Response) {
+  const rows = await query(`
+    SELECT * FROM contactos
+    WHERE estado = 'visita_agendada'
+    ORDER BY ultima_actividad DESC
+  `);
+  res.json(rows);
+}
+
 // Ficha completa de un lead: datos del contacto + todo su historial de
 // atribución (lead_attribution puede tener varias filas por celular, una
 // por cada touch/anuncio que vio antes de escribir). is_first_touch=true
