@@ -1,7 +1,36 @@
 import type { Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import { query } from '../db/pool.js';
 
 const esFecha = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+// Carpeta donde el script de backfill guarda las miniaturas de TikTok
+// descargadas (self-host): así no dependen del CDN de TikTok, que da URLs
+// firmadas que expiran. cwd = raíz del backend (npm start / el script).
+const TIKTOK_MEDIA_DIR = path.join(process.cwd(), 'media', 'tiktok');
+
+// Sirve una miniatura de creativo de TikTok ya guardada en disco. La BD
+// apunta a /api/crm/media/tiktok/:file; el proxy del front reenvía el
+// binario (mismo camino que las imágenes de Meta).
+export function getTiktokCreativoImagen(req: Request, res: Response) {
+  const file = String(req.params.file);
+  // Solo nombre de archivo simple: evita traversal (../, rutas absolutas)
+  if (!/^[\w.-]+$/.test(file) || file.includes('..')) {
+    res.status(400).json({ error: 'archivo inválido' });
+    return;
+  }
+  const full = path.join(TIKTOK_MEDIA_DIR, file);
+  fs.stat(full, (err, st) => {
+    if (err || !st.isFile()) {
+      res.status(404).json({ error: 'miniatura no encontrada' });
+      return;
+    }
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=604800');
+    fs.createReadStream(full).pipe(res);
+  });
+}
 
 // WHERE de formulario_tiktok a partir de los filtros. Mismo criterio que
 // whereFormularios (formularios.controller): la campaña acá es
@@ -92,12 +121,14 @@ export async function getFormulariosTiktokFunnel(req: Request, res: Response) {
       campaign_name,
       ad_name,
       ad_id,
+      thumbnail_url,
+      video_url,
       COALESCE(NULLIF(TRIM(proyecto_nombre), ''), 'Sin proyecto') AS proyecto_nombre,
       COUNT(*) AS leads,
       COUNT(*) FILTER (WHERE derivado = true) AS derivados
     FROM formulario_tiktok
     ${where}
-    GROUP BY campaign_name, ad_name, ad_id,
+    GROUP BY campaign_name, ad_name, ad_id, thumbnail_url, video_url,
       COALESCE(NULLIF(TRIM(proyecto_nombre), ''), 'Sin proyecto')
     ORDER BY leads DESC
   `, params);

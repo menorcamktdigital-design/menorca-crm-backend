@@ -235,6 +235,32 @@ export async function getStatsAnuncioProyectos(req: Request, res: Response) {
   res.json(rows);
 }
 
+// Nivel 3 (Comercial): lista nominal de los leads de un anuncio puntual.
+// ?ad_id= identifica el anuncio real de Meta (mismo valor que /stats/anuncios).
+// Devuelve una fila por lead (nombre, número, estado, proyecto) para el
+// drill-down que abre la conversación de cada uno.
+export async function getStatsAnuncioLeads(req: Request, res: Response) {
+  const { conds, params } = filtros(req, 'c.creado_en');
+  conds.push(`c.first_source_type = 'meta_ad'`);
+  params.push(req.query.ad_id as string || '');
+  conds.push(`c.first_ad_id = $${params.length}`);
+  const where = `WHERE ${conds.join(' AND ')}`;
+
+  const rows = await query(`
+    SELECT
+      c.numero,
+      c.nombre,
+      c.estado,
+      COALESCE(NULLIF(TRIM(c.proyecto_interes), ''), 'Sin proyecto') as proyecto_interes,
+      c.creado_en,
+      c.ultima_actividad
+    FROM contactos c
+    ${where}
+    ORDER BY c.creado_en DESC
+  `, params);
+  res.json(rows);
+}
+
 // Nivel 3 (Comercial): catálogo de creativos — para mostrar el anuncio real (texto/imagen/video)
 // junto a sus métricas, cruzando lead_attribution (detalle del creativo) con contactos (estado/embudo).
 // Se agrupa por c.first_ad_id, igual que /stats/anuncios y /stats/anuncios/proyectos.

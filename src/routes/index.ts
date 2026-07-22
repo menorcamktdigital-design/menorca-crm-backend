@@ -7,6 +7,7 @@ import {
   getStatsCampanas,
   getStatsAnuncios,
   getStatsAnuncioProyectos,
+  getStatsAnuncioLeads,
   getStatsCreativos,
   getStatsMultiTouch,
 } from '../controllers/stats.controller';
@@ -17,6 +18,7 @@ import {
   getFormulariosTiktok,
   getFormulariosTiktokStats,
   getFormulariosTiktokFunnel,
+  getTiktokCreativoImagen,
 } from '../controllers/formulariosTiktok.controller';
 import {
   getFormulariosWeb,
@@ -33,6 +35,7 @@ router.get('/stats/fuentes', getStatsFuentes);
 router.get('/stats/campanas', getStatsCampanas);
 router.get('/stats/anuncios', getStatsAnuncios);
 router.get('/stats/anuncios/proyectos', getStatsAnuncioProyectos);
+router.get('/stats/anuncios/leads', getStatsAnuncioLeads);
 router.get('/stats/creativos', getStatsCreativos);
 router.get('/stats/multitouch', getStatsMultiTouch);
 router.get('/contactos', getContactos);
@@ -40,6 +43,7 @@ router.get('/visitas', getVisitas);
 router.get('/contactos/:numero/ficha', getFichaContacto);
 router.get('/conversacion/:numero', getConversacion);
 router.get('/nuevos/:numero/:desde', getNuevos);
+router.get('/media/tiktok/:file', getTiktokCreativoImagen);
 router.get('/media/:imagen_id', getMediaProxy);
 router.get('/creativo/:ad_id/imagen', getCreativoImagen);
 router.get('/formularios/stats', getFormulariosStats);
