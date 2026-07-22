@@ -13,6 +13,16 @@ import {
 import { getContactos, getFichaContacto, getVisitas } from '../controllers/contactos.controller';
 import { getConversacion, getNuevos, getMediaProxy, getCreativoImagen } from '../controllers/conversaciones.controller';
 import { getFormularios, getFormulariosStats, getFormulariosFunnel } from '../controllers/formularios.controller';
+import {
+  getFormulariosTiktok,
+  getFormulariosTiktokStats,
+  getFormulariosTiktokFunnel,
+} from '../controllers/formulariosTiktok.controller';
+import {
+  getFormulariosWeb,
+  getFormulariosWebStats,
+  getFormulariosWebFunnel,
+} from '../controllers/formulariosWeb.controller';
 
 const router = Router();
 
@@ -34,6 +44,12 @@ router.get('/media/:imagen_id', getMediaProxy);
 router.get('/creativo/:ad_id/imagen', getCreativoImagen);
 router.get('/formularios/stats', getFormulariosStats);
 router.get('/formularios/funnel', getFormulariosFunnel);
+router.get('/formularios/tiktok/stats', getFormulariosTiktokStats);
+router.get('/formularios/tiktok/funnel', getFormulariosTiktokFunnel);
+router.get('/formularios/tiktok', getFormulariosTiktok);
+router.get('/formularios/web/stats', getFormulariosWebStats);
+router.get('/formularios/web/funnel', getFormulariosWebFunnel);
+router.get('/formularios/web', getFormulariosWeb);
 router.get('/formularios', getFormularios);
 
 export default router;

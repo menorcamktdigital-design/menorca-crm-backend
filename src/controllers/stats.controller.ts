@@ -96,11 +96,16 @@ export async function getStatsActividad(req: Request, res: Response) {
   }
   const where = `WHERE ${conds.join(' AND ')}`;
 
+  // derivados se desglosa por fuente del lead (first_source_type): el
+  // filtro base ya exige first_source_type IS NOT NULL, así que
+  // derivados = derivados_meta + derivados_directo
   const rows = await query(`
     SELECT
       DATE(ultima_actividad) as fecha,
       COUNT(*) as total,
-      COUNT(*) FILTER (WHERE estado='derivado') as derivados
+      COUNT(*) FILTER (WHERE estado='derivado') as derivados,
+      COUNT(*) FILTER (WHERE estado='derivado' AND first_source_type='meta_ad') as derivados_meta,
+      COUNT(*) FILTER (WHERE estado='derivado' AND first_source_type='direct') as derivados_directo
     FROM contactos
     ${where}
     GROUP BY DATE(ultima_actividad)
