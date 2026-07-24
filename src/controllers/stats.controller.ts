@@ -103,9 +103,11 @@ export async function getStatsActividad(req: Request, res: Response) {
     SELECT
       DATE(ultima_actividad) as fecha,
       COUNT(*) as total,
+      COUNT(*) FILTER (WHERE first_source_type='meta_ad') as total_meta,
+      COUNT(*) FILTER (WHERE first_source_type<>'meta_ad') as total_directo,
       COUNT(*) FILTER (WHERE estado='derivado') as derivados,
       COUNT(*) FILTER (WHERE estado='derivado' AND first_source_type='meta_ad') as derivados_meta,
-      COUNT(*) FILTER (WHERE estado='derivado' AND first_source_type='direct') as derivados_directo
+      COUNT(*) FILTER (WHERE estado='derivado' AND first_source_type<>'meta_ad') as derivados_directo
     FROM contactos
     ${where}
     GROUP BY DATE(ultima_actividad)
