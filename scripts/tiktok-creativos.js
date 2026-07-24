@@ -3,9 +3,8 @@
 // (/api/crm/media/tiktok/...). Así las imágenes no dependen del CDN de
 // TikTok, que entrega URLs firmadas que expiran.
 //
-// El ad_id que guarda el webhook de TikTok apunta a anuncios ya borrados
-// (0 coincidencias), así que el cruce con la cuenta se hace por NOMBRE de
-// anuncio, que sí sobrevive a las recreaciones.
+// El cruce con la cuenta se hace por NOMBRE de anuncio, y se corrige el
+// ad_id en la BD usando el valor real de la API de TikTok.
 //
 // Uso (desde la raíz del backend):
 //   node scripts/tiktok-creativos.js           -> simulación (no baja ni escribe)
@@ -65,7 +64,7 @@ const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const filt = encodeURIComponent(JSON.stringify({ primary_status: 'STATUS_ALL' }));
   const ads = []; let page = 1, more = true;
   while (more) {
-    const u = `https://business-api.tiktok.com/open_api/v1.3/ad/get/?advertiser_id=${ADV}&page=${page}&page_size=100&fields=["ad_name","video_id"]&filtering=${filt}`;
+    const u = `https://business-api.tiktok.com/open_api/v1.3/ad/get/?advertiser_id=${ADV}&page=${page}&page_size=100&fields=["ad_name","video_id","ad_id"]&filtering=${filt}`;
     const r = await getJson(u);
     if (r?.code !== 0) { console.log('ad/get err', r?.message); break; }
     ads.push(...(r?.data?.list || []));
@@ -78,7 +77,8 @@ const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const { rows } = await pool.query(`SELECT DISTINCT ad_name FROM formulario_tiktok WHERE ad_name IS NOT NULL AND ad_name<>''`);
   const elegir = (t0) => { const t = norm(t0); const c = ads.filter((a) => { const n = norm(a.ad_name); return n === t || n.endsWith(t) || n.includes(t); }); return (c.find((a) => a.video_id) || c[0] || null); };
   const items = [];
-  for (const r of rows) { const a = elegir(r.ad_name); if (a && a.video_id) items.push({ ad_name: r.ad_name, video_id: a.video_id }); }
+  const adIdMap = new Map();
+  for (const r of rows) { const a = elegir(r.ad_name); if (a) { if (a.ad_id) adIdMap.set(r.ad_name, String(a.ad_id)); if (a.video_id) items.push({ ad_name: r.ad_name, video_id: a.video_id }); } }
 
   // 3) info de video (cover + preview) por video_id
   const vids = [...new Set(items.map((i) => i.video_id))];
@@ -90,10 +90,20 @@ const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
     for (const v of r?.data?.list || []) vmap[v.video_id] = { cover: v.video_cover_url || v.preview_url || '', preview: v.preview_url || '' };
   }
 
-  console.log('nombres con creativo:', items.length, '| sin match:', rows.length - items.length);
+  console.log('nombres con creativo:', items.length, '| con ad_id:', adIdMap.size, '| sin match:', rows.length - items.length);
   if (!APPLY) { console.log('(SIMULACION: no se descargó ni escribió nada.)'); await pool.end(); return; }
 
-  // 4) descargar imágenes + actualizar BD
+  // 4a) corregir ad_id para todos los matches
+  let updIds = 0;
+  for (const [adName, adId] of adIdMap) {
+    const r = await pool.query(
+      `UPDATE formulario_tiktok SET ad_id=$2 WHERE ad_name=$1 AND (ad_id IS NULL OR ad_id<>$2)`,
+      [adName, adId]);
+    updIds += r.rowCount;
+  }
+  console.log(`ad_ids corregidos: ${updIds}`);
+
+  // 4b) descargar imágenes + actualizar BD
   fs.mkdirSync(MEDIA_DIR, { recursive: true });
   let bajadas = 0, updLeads = 0, errBajar = 0;
   const yaBajado = new Set();
