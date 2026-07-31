@@ -142,13 +142,24 @@ export async function getContactos(req: Request, res: Response) {
 }
 
 // Visitas agendadas: contactos con estado visita_agendada, para la vista
-// calendario/agenda. SELECT * para incluir fecha_visita si la columna
-// existe; si no, el frontend usa ultima_actividad como fecha de referencia.
+// calendario/agenda. La fecha real de la visita vive en la tabla `visitas`
+// (la escribe el agente de n8n), no en contactos: sin este JOIN el frontend
+// caía a ultima_actividad y pintaba la visita el día de la conversación.
+// Se toma la fila más reciente porque el agente borra y reinserta al
+// reagendar. `fecha_visita_ts` es timestamptz, así que ya identifica un
+// instante y no pasa por el parser de tipo 1114 de pool.ts.
 export async function getVisitas(_req: Request, res: Response) {
   const rows = await query(`
-    SELECT * FROM contactos
-    WHERE estado = 'visita_agendada'
-    ORDER BY ultima_actividad DESC
+    SELECT c.*, v.fecha_visita_ts AS fecha_visita
+    FROM contactos c
+    LEFT JOIN LATERAL (
+      SELECT fecha_visita_ts FROM visitas
+      WHERE numero = c.numero AND fecha_visita_ts IS NOT NULL
+      ORDER BY creado_en DESC
+      LIMIT 1
+    ) v ON true
+    WHERE c.estado = 'visita_agendada'
+    ORDER BY v.fecha_visita_ts DESC NULLS LAST, c.ultima_actividad DESC
   `);
   res.json(rows);
 }
