@@ -25,6 +25,13 @@ import {
   getFormulariosWebStats,
   getFormulariosWebFunnel,
 } from '../controllers/formulariosWeb.controller';
+import {
+  getFunnelResumen,
+  getFunnelPlazas,
+  getFunnelCampanas,
+  getFunnelSinPlaza,
+  getFunnelWeb,
+} from '../controllers/funnel.controller';
 
 const router = Router();
 
@@ -55,5 +62,10 @@ router.get('/formularios/web/stats', getFormulariosWebStats);
 router.get('/formularios/web/funnel', getFormulariosWebFunnel);
 router.get('/formularios/web', getFormulariosWeb);
 router.get('/formularios', getFormularios);
+router.get('/funnel/resumen', getFunnelResumen);
+router.get('/funnel/plazas', getFunnelPlazas);
+router.get('/funnel/campanas', getFunnelCampanas);
+router.get('/funnel/sin-plaza', getFunnelSinPlaza);
+router.get('/funnel/web', getFunnelWeb);
 
 export default router;
